@@ -5,6 +5,6 @@
   NEVER put a sb_secret_... key here.
 */
 window.APP_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_PUBLISHABLE_KEY: ""
+  SUPABASE_URL: "https://bhdbpehzzwdkfhxoinhn.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_SFrR39KMXWdjzcKPTeUoeQ_C_z54oIM"
 };
