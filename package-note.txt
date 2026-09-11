@@ -1,2 +1,1 @@
 No npm install is required. This is a static GitHub Pages site using the Supabase CDN.
-
