@@ -229,13 +229,15 @@
       const group = activeGroupFor(loan.id);
       const interest = interestFor(loan);
       const balance = currentBalance(loan);
-      const days = effectiveUpdateDays(loan);
+      const scheduleLabels = loan.rateUnit === "yearly"
+        ? effectiveUpdateDates(loan).map(v=>{const [m,d]=v.split("-");return `${Number(m)}月${Number(d)}日`;})
+        : effectiveUpdateDays(loan).map(d=>`${d}日`);
       return `<article class="person-card glass" data-person="${loan.id}">
         <button class="person-main" data-person-open="${loan.id}">
           <div class="person-head"><div><div class="person-name">${esc(loan.name)}</div><div class="person-sub">${group ? `GROUP · ${esc(group.name)}` : "個別管理"}</div></div><span class="status-pill">${loan.rateUnit === "monthly" ? "月利" : "年利"} ${num(loan.rate)}%</span></div>
           <div class="person-balance">${yen(balance)}</div>
           <div class="person-meta"><span>借入額 ${yen(effectivePrincipal(loan))}</span><span>利子 ${yen(interest)}</span><span>借入日 ${fmtDate(loan.startDate)}</span></div>
-          <div class="schedule-row">更新日 ${days.length ? days.map(d=>`<b>${loan.rateUnit === "yearly" ? `${Number(d.split("-")[0])}月${Number(d.split("-")[1])}日` : `${d}日`}</b>`).join(" ") : "未設定"}</div>
+          <div class="schedule-row">更新日 ${scheduleLabels.length ? scheduleLabels.map(v=>`<b>${v}</b>`).join(" ") : "未設定"}</div>
         </button>
         <div class="person-actions"><button class="small-button" data-edit="${loan.id}">編集</button><button class="small-button" data-payment="${loan.id}">返済を記録</button><button class="small-button danger-button" data-delete="${loan.id}">削除</button></div>
       </article>`;
@@ -448,7 +450,15 @@
     const entry=normalizeLoan({id,name:$("personName").value.trim(),principal:Number($("personPrincipal").value),rate:Number($("personRate").value),rateUnit:unit,startDate:$("personStartDate").value,updateDays:unit === "monthly" ? days : [],updateDates:unit === "yearly" ? dates : [],note:$("personNote").value.trim(),payments:state.loans.find(x=>x.id===id)?.payments||[]});
     if(!entry.name||!entry.startDate||!hasSchedule)return toast("名前・借入日・利息更新日を入力してください。");
     const i=state.loans.findIndex(x=>x.id===id); if(i>=0)state.loans[i]=entry;else state.loans.unshift(entry);
-    $("personDialog").close(); renderAll(); await persist(); toast("保存しました");
+    try {
+      $("personDialog").close();
+      renderAll();
+      await persist();
+      toast("保存しました");
+    } catch (err) {
+      console.error("人の保存後処理でエラー:", err);
+      toast(`保存後の表示処理でエラー: ${err.message}`);
+    }
   }
 
   function openGroupAdd(){
