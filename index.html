@@ -4,212 +4,70 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1020">
-  <title>Loan Ledger — 暗号化貸付管理</title>
+  <title>Loan Ledger — 貸付・利息管理</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="ambient ambient-a"></div>
-  <div class="ambient ambient-b"></div>
-  <div class="ambient ambient-c"></div>
-
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="ambient ambient-c"></div>
   <header class="topbar glass">
-    <a class="brand" href="#" aria-label="Loan Ledger">
-      <span class="brand-mark">LL</span>
-      <span><strong>Loan Ledger</strong><small>Private money tracker</small></span>
-    </a>
-    <div class="top-actions">
-      <span id="syncStatus" class="status-pill">ローカル</span>
-      <button id="vaultButton" class="button button-secondary">暗号保管庫</button>
-      <button id="lockButton" class="button button-secondary hidden">ロック</button>
-    </div>
+    <a class="brand" href="#"><span class="brand-mark">LL</span><span><strong>Loan Ledger</strong><small>Private money tracker</small></span></a>
+    <div class="top-actions"><span id="syncStatus" class="status-pill">ローカル</span><button id="vaultButton" class="button button-secondary">暗号保管庫</button><button id="lockButton" class="button button-secondary hidden">ロック</button></div>
   </header>
 
   <main class="shell">
     <section class="hero">
-      <div>
-        <p class="eyebrow">ENCRYPTED LOAN TRACKER</p>
-        <h1>貸したお金を、<span>迷わず管理。</span></h1>
-        <p class="hero-copy">暗証コードでデータを暗号化し、PCとスマホで同じ保管庫を共有できます。</p>
-      </div>
-      <div class="hero-card glass">
-        <span>現在の貸付残高</span>
-        <strong id="heroTotal">¥0</strong>
-        <small id="heroInterest">累計利子 ¥0</small>
-      </div>
+      <div><p class="eyebrow">PRIVATE LOAN DASHBOARD</p><h1>貸したお金を、<span>一目で管理。</span></h1><p class="hero-copy">複数の利息更新日、グループ、毎月のTODO、返済状況までまとめて管理。PCとスマホで同じ暗号化保管庫を使えます。</p></div>
+      <div class="hero-card glass"><span>現在の貸付残高</span><strong id="heroTotal">¥0</strong><small id="heroInterest">累計利子 ¥0</small></div>
+    </section>
+
+    <section class="dashboard-stats">
+      <div class="stat glass"><span>借りている人</span><strong id="loanCountLabel">0人</strong></div>
+      <div class="stat glass"><span>今月の更新</span><strong id="todoDateLabel">0件</strong></div>
+      <div class="stat glass"><span>支払済み合計</span><strong id="summaryPaid">¥0</strong></div>
     </section>
 
     <section class="toolbar">
-      <div>
-        <h2>貸付一覧</h2>
-        <p id="loanCountLabel">0件の貸付</p>
-      </div>
-      <button id="addLoanButton" class="button button-primary">＋ 貸付を追加</button>
+      <div><p class="eyebrow">PEOPLE</p><h2>お金を借りている人</h2><p>人をクリックすると詳細を確認できます。</p></div>
+      <button id="addPersonButton" class="button button-primary">＋ 人を追加</button>
     </section>
-
     <section id="loanList" class="loan-grid"></section>
 
+    <section class="panel glass todo-panel">
+      <div class="panel-heading calendar-heading"><div><p class="eyebrow">MONTHLY TODO</p><h2 id="todoTitle">2026年9月の利息TODO</h2><p>✓＝利息を支払済み　×＝未払い</p></div><div class="calendar-nav"><button id="todoPrev" class="icon-button">‹</button><button id="todoToday" class="button button-secondary">今月</button><button id="todoNext" class="icon-button">›</button></div></div>
+      <div id="todoList" class="todo-list"></div>
+    </section>
+
+    <section class="panel glass">
+      <div class="panel-heading"><div><p class="eyebrow">GROUPS</p><h2>グループ管理</h2><p>同じ更新日に複数人をまとめられます。金額が同じならグループ金額も設定できます。</p></div><button id="addGroupButton" class="button button-primary">＋ グループを作成</button></div>
+      <div id="groupList" class="group-grid"></div>
+    </section>
+
     <section class="two-col">
-      <article class="panel glass">
-        <div class="panel-heading">
-          <div><p class="eyebrow">CALCULATOR</p><h2>利子を計算</h2></div>
-        </div>
-        <div class="form-grid">
-          <label>貸付
-            <select id="calcLoan"></select>
-          </label>
-          <label>計算日
-            <input id="calcDate" type="date">
-          </label>
-        </div>
-        <div id="calcResult" class="result-card">
-          <span>計算結果</span>
-          <strong>貸付を選択してください</strong>
-        </div>
-      </article>
-
-      <article class="panel glass">
-        <div class="panel-heading">
-          <div><p class="eyebrow">SUMMARY</p><h2>サマリー</h2></div>
-        </div>
-        <div class="summary-grid">
-          <div><span>貸付件数</span><strong id="summaryCount">0</strong></div>
-          <div><span>元金合計</span><strong id="summaryPrincipal">¥0</strong></div>
-          <div><span>利子合計</span><strong id="summaryInterest">¥0</strong></div>
-          <div><span>合計</span><strong id="summaryTotal">¥0</strong></div>
-        </div>
-      </article>
+      <article class="panel glass"><div class="panel-heading"><div><p class="eyebrow">CALCULATOR</p><h2>利子・現在額を計算</h2></div></div><div class="form-grid"><label>人<select id="calcLoan"></select></label><label>計算日<input id="calcDate" type="date"></label></div><div id="calcResult" class="result-card"><span>計算結果</span><strong>人を選択してください</strong></div></article>
+      <article class="panel glass"><div class="panel-heading"><div><p class="eyebrow">SUMMARY</p><h2>サマリー</h2></div></div><div class="summary-grid"><div><span>人数</span><strong id="summaryCount">0</strong></div><div><span>元金</span><strong id="summaryPrincipal">¥0</strong></div><div><span>利子</span><strong id="summaryInterest">¥0</strong></div><div><span>支払済</span><strong id="summaryPaid2">¥0</strong></div><div class="summary-wide"><span>現在の合計残高</span><strong id="summaryTotal">¥0</strong></div></div></article>
     </section>
 
-    <section class="panel glass calendar-panel">
-      <div class="panel-heading calendar-heading">
-        <div><p class="eyebrow">CALENDAR</p><h2 id="calendarTitle">2026年9月</h2></div>
-        <div class="calendar-nav">
-          <button id="prevMonth" class="icon-button">‹</button>
-          <button id="todayMonth" class="button button-secondary">今月</button>
-          <button id="nextMonth" class="icon-button">›</button>
-        </div>
-      </div>
-      <div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>
-      <div id="calendarGrid" class="calendar-grid"></div>
-    </section>
+    <section class="panel glass calendar-panel"><div class="panel-heading calendar-heading"><div><p class="eyebrow">CALENDAR</p><h2 id="calendarTitle">2026年9月</h2><p>利息更新日を一覧表示します。</p></div><div class="calendar-nav"><button id="prevMonth" class="icon-button">‹</button><button id="todayMonth" class="button button-secondary">今月</button><button id="nextMonth" class="icon-button">›</button></div></div><div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div><div id="calendarGrid" class="calendar-grid"></div></section>
 
-    <footer>
-      <span>Loan Ledger</span>
-      <span>暗号化データはSupabaseに保存されます。暗証コードは保存しません。</span>
-    </footer>
+    <footer><span>Loan Ledger</span><span>データはブラウザ側で暗号化してからSupabaseへ保存されます。</span></footer>
   </main>
 
-  <!-- Vault modal -->
-  <dialog id="vaultDialog" class="modal">
-    <div class="modal-card">
-      <button class="modal-close" data-close="vaultDialog">×</button>
-      <p class="eyebrow">SECURE VAULT</p>
-      <h2 id="vaultTitle">暗号保管庫</h2>
-      <p id="vaultDescription" class="muted">初回は暗証コードを設定してください。</p>
+  <dialog id="vaultDialog" class="modal"><div class="modal-card"><button class="modal-close" data-close="vaultDialog">×</button><p class="eyebrow">SECURE VAULT</p><h2 id="vaultTitle">暗号保管庫</h2><p id="vaultDescription" class="muted">初回は暗証コードを設定してください。</p><div id="vaultSetup"><label>暗証コード<input id="setupPin" type="password" minlength="8" maxlength="64" placeholder="8文字以上"></label><label>暗証コード（確認）<input id="setupPinConfirm" type="password" minlength="8" maxlength="64" placeholder="もう一度入力"></label><button id="createVaultButton" class="button button-primary full">保管庫を作成</button></div><div id="vaultUnlock" class="hidden"><label>暗証コード<input id="unlockPin" type="password" placeholder="暗証コード"></label><button id="unlockButton" class="button button-primary full">ロック解除</button><button id="showPairingButton" class="text-button">別の端末を追加する</button></div><div id="pairingPanel" class="pairing-panel hidden"><h3>共有コード</h3><p class="muted">もう一方の端末で共有コードと暗証コードを入力します。</p><div id="pairingCode" class="pairing-code">—</div><div class="pairing-actions"><button id="copyPairingButton" class="button button-secondary">コピー</button><button id="newPairingButton" class="button button-secondary">新しいコード</button></div></div><div id="pairingImport" class="pairing-panel hidden"><label>共有コード<input id="importPairingCode" type="text" placeholder="共有コード"></label><button id="connectVaultButton" class="button button-primary full">この保管庫に接続</button></div><p id="vaultMessage" class="form-message"></p></div></dialog>
 
-      <div id="vaultSetup">
-        <label>暗証コード
-          <input id="setupPin" type="password" inputmode="numeric" autocomplete="new-password" minlength="8" maxlength="64" placeholder="8文字以上">
-        </label>
-        <label>暗証コード（確認）
-          <input id="setupPinConfirm" type="password" inputmode="numeric" autocomplete="new-password" minlength="8" maxlength="64" placeholder="もう一度入力">
-        </label>
-        <button id="createVaultButton" class="button button-primary full">保管庫を作成</button>
-      </div>
+  <dialog id="personDialog" class="modal"><div class="modal-card"><button class="modal-close" data-close="personDialog">×</button><p class="eyebrow">PERSON</p><h2 id="personDialogTitle">人を追加</h2><form id="personForm"><input id="personId" type="hidden"><label>名前<input id="personName" required maxlength="60" placeholder="例：田中さん"></label><div class="form-grid"><label>借りたお金<input id="personPrincipal" type="number" min="0" step="1" required placeholder="100000"></label><label>利率（%）<input id="personRate" type="number" min="0" step="0.01" required placeholder="1"></label></div><label>利子の周期<select id="personRateUnit"><option value="monthly">毎月</option><option value="yearly">毎年</option></select></label><label>借入日<input id="personStartDate" type="date" required></label><div class="schedule-editor"><div class="schedule-label"><span>利息更新日（複数可）</span><small>例：10日・20日・30日</small></div><div class="schedule-add"><input id="scheduleDateInput" type="date"><button id="addScheduleDay" type="button" class="button button-secondary">＋日付を追加</button></div><input id="scheduleDaysData" type="hidden" value="[]"><div id="scheduleDays" class="chip-row"></div></div><label>メモ（任意）<textarea id="personNote" rows="3" maxlength="200" placeholder="返済予定など"></textarea></label><button class="button button-primary full" type="submit">保存</button></form></div></dialog>
 
-      <div id="vaultUnlock" class="hidden">
-        <label>暗証コード
-          <input id="unlockPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="暗証コード">
-        </label>
-        <button id="unlockButton" class="button button-primary full">ロック解除</button>
-        <button id="showPairingButton" class="text-button">別の端末を追加する</button>
-      </div>
+  <dialog id="groupDialog" class="modal"><div class="modal-card"><button class="modal-close" data-close="groupDialog">×</button><p class="eyebrow">GROUP</p><h2 id="groupDialogTitle">グループを作成</h2><form id="groupForm"><input id="groupId" type="hidden"><label>グループ名<input id="groupName" required maxlength="60" placeholder="例：10日組"></label><label>同じ金額なら入力（任意）<input id="groupSharedAmount" type="number" min="0" step="1" placeholder="50000"></label><div class="schedule-editor"><div class="schedule-label"><span>利息更新日（複数可）</span><small>例：10日・20日・30日</small></div><div class="schedule-add"><input id="groupScheduleDateInput" type="date"><button id="addGroupScheduleDay" type="button" class="button button-secondary">＋日付を追加</button></div><input id="groupScheduleDaysData" type="hidden" value="[]"><div id="groupScheduleDays" class="chip-row"></div></div><div class="member-picker"><div class="schedule-label"><span>人を選択</span><small>グループの更新日が追加されます</small></div><div id="groupPeople" class="people-check-list"></div></div><button class="button button-primary full" type="submit">グループを保存</button></form></div></dialog>
 
-      <div id="pairingPanel" class="pairing-panel hidden">
-        <h3>別の端末で開く</h3>
-        <p class="muted">この共有コードをPC・スマホのもう一方に入力してください。共有コードと暗証コードの両方が必要です。</p>
-        <div class="pairing-code" id="pairingCode">—</div>
-        <div class="pairing-actions">
-          <button id="copyPairingButton" class="button button-secondary">コピー</button>
-          <button id="newPairingButton" class="button button-secondary">新しいコード</button>
-        </div>
-      </div>
+  <dialog id="paymentDialog" class="modal"><div class="modal-card"><button class="modal-close" data-close="paymentDialog">×</button><p class="eyebrow">PAYMENT</p><h2>返済・利息支払いを記録</h2><form id="paymentForm"><input id="paymentLoanId" type="hidden"><label>支払日<input id="paymentDate" type="date" required></label><label>支払った金額<input id="paymentAmount" type="number" min="0" step="1" required placeholder="10000"></label><label>メモ（任意）<textarea id="paymentNote" rows="2" placeholder="利息支払いなど"></textarea></label><button class="button button-primary full" type="submit">記録する</button></form></div></dialog>
 
-      <div id="pairingImport" class="hidden">
-        <label>共有コード
-          <input id="importPairingCode" type="text" autocomplete="off" placeholder="共有コードを入力">
-        </label>
-        <button id="connectVaultButton" class="button button-primary full">この保管庫に接続</button>
-      </div>
+  <dialog id="personDetailDialog" class="modal wide-modal"><div class="modal-card"><button class="modal-close" data-close="personDetailDialog">×</button><p class="eyebrow">PERSON DETAIL</p><h2 id="detailTitle">詳細</h2><div id="detailBody"></div><div class="detail-actions"><button id="detailEditButton" class="button button-secondary">編集</button><button id="detailPaymentButton" class="button button-primary">返済を記録</button></div></div></dialog>
 
-      <p id="vaultMessage" class="form-message"></p>
-    </div>
-  </dialog>
-
-  <!-- Loan modal -->
-  <dialog id="loanDialog" class="modal">
-    <div class="modal-card">
-      <button class="modal-close" data-close="loanDialog">×</button>
-      <p class="eyebrow">LOAN ENTRY</p>
-      <h2 id="loanDialogTitle">貸付を追加</h2>
-      <form id="loanForm">
-        <input id="loanId" type="hidden">
-        <label>名前
-          <input id="loanName" required maxlength="60" placeholder="例：田中さん">
-        </label>
-        <div class="form-grid">
-          <label>貸しているお金
-            <input id="loanPrincipal" type="number" min="0" step="0.01" required placeholder="100000">
-          </label>
-          <label>割合（%）
-            <input id="loanRate" type="number" min="0" step="0.01" required placeholder="1">
-          </label>
-        </div>
-        <label>利子の更新周期
-          <select id="loanRateUnit">
-            <option value="monthly">毎月</option>
-            <option value="yearly">毎年</option>
-          </select>
-        </label>
-        <div class="form-grid">
-          <label>貸付開始日
-            <input id="loanStartDate" type="date" required>
-          </label>
-          <label>利子更新日
-            <input id="loanUpdateDate" type="date" required>
-          </label>
-        </div>
-        <label>メモ（任意）
-          <textarea id="loanNote" maxlength="120" rows="3" placeholder="返済予定など"></textarea>
-        </label>
-        <button class="button button-primary full" type="submit">保存</button>
-      </form>
-    </div>
-  </dialog>
-
-  <!-- Pairing modal -->
-  <dialog id="connectDialog" class="modal">
-    <div class="modal-card">
-      <button class="modal-close" data-close="connectDialog">×</button>
-      <p class="eyebrow">DEVICE LINK</p>
-      <h2>別の端末から開く</h2>
-      <p class="muted">共有コードを入力し、その後、保管庫の暗証コードを入力します。</p>
-      <label>共有コード
-        <input id="connectCode" type="text" autocomplete="off" placeholder="共有コード">
-      </label>
-      <button id="connectStartButton" class="button button-primary full">次へ</button>
-      <p id="connectMessage" class="form-message"></p>
-    </div>
-  </dialog>
+  <dialog id="connectDialog" class="modal"><div class="modal-card"><button class="modal-close" data-close="connectDialog">×</button><p class="eyebrow">DEVICE LINK</p><h2>別の端末から開く</h2><p class="muted">共有コードを入力して保管庫を探します。</p><label>共有コード<input id="connectCode" type="text" autocomplete="off" placeholder="共有コード"></label><button id="connectStartButton" class="button button-primary full">次へ</button><p id="connectMessage" class="form-message"></p></div></dialog>
 
   <div id="toast" class="toast"></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="crypto.js"></script>
-  <script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script><script src="crypto.js"></script><script src="app.js"></script>
 </body>
 </html>
