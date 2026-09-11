@@ -30,7 +30,7 @@
     return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
   };
   const today = () => dateISO(new Date());
-  const uid = () => crypto.randomUUID();
+  const uid = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
 
   function toast(message) {
     const el = $("toast");
@@ -60,7 +60,7 @@
       rateUnit: l.rateUnit === "yearly" ? "yearly" : "monthly",
       startDate: l.startDate || today(),
       updateDays: Array.from(new Set((Array.isArray(l.updateDays) ? l.updateDays : (l.updateDate ? [Number(String(l.updateDate).split("-")[2])] : [])).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b),
-      updateDates: Array.from(new Set((Array.isArray(l.updateDates) ? l.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v))).sort()),
+      updateDates: Array.from(new Set((Array.isArray(l.updateDates) ? l.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v)))).sort(),
       note: String(l.note || ""),
       payments: Array.isArray(l.payments) ? l.payments.map(p => ({ id:p.id || uid(), date:p.date || today(), amount:Number(p.amount)||0, note:String(p.note||"") })) : []
     };
@@ -73,7 +73,7 @@
       memberIds: Array.from(new Set(Array.isArray(g.memberIds) ? g.memberIds : [])),
       sharedAmount: g.sharedAmount === "" || g.sharedAmount == null ? null : Number(g.sharedAmount),
       updateDays: Array.from(new Set((Array.isArray(g.updateDays) ? g.updateDays : []).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b),
-      updateDates: Array.from(new Set((Array.isArray(g.updateDates) ? g.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v))).sort()),
+      updateDates: Array.from(new Set((Array.isArray(g.updateDates) ? g.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v)))).sort(),
       rateUnit: g.rateUnit === "yearly" ? "yearly" : "monthly"
     };
   }
@@ -443,21 +443,32 @@
     $("personDialogTitle").textContent="人を編集"; $("personDialog").showModal();
   }
   async function savePerson(e){
-    e.preventDefault(); if(vaultCode&&!unlocked)return toast("先に保管庫を開いてください。");
-    const id=$("personId").value||uid(), unit=$("personRateUnit").value;
-    const days=JSON.parse($("scheduleDaysData").value||"[]"), dates=JSON.parse($("scheduleDatesData").value||"[]");
-    const hasSchedule=unit === "yearly" ? dates.length : days.length;
-    const entry=normalizeLoan({id,name:$("personName").value.trim(),principal:Number($("personPrincipal").value),rate:Number($("personRate").value),rateUnit:unit,startDate:$("personStartDate").value,updateDays:unit === "monthly" ? days : [],updateDates:unit === "yearly" ? dates : [],note:$("personNote").value.trim(),payments:state.loans.find(x=>x.id===id)?.payments||[]});
-    if(!entry.name||!entry.startDate||!hasSchedule)return toast("名前・借入日・利息更新日を入力してください。");
-    const i=state.loans.findIndex(x=>x.id===id); if(i>=0)state.loans[i]=entry;else state.loans.unshift(entry);
+    e.preventDefault();
     try {
+      if(vaultCode && !unlocked) return toast("先に保管庫を開いてください。");
+      const id=$("personId").value || uid();
+      const unit=$("personRateUnit").value === "yearly" ? "yearly" : "monthly";
+      const parseArray = (id) => {
+        try { const v=JSON.parse($(id).value || "[]"); return Array.isArray(v) ? v : []; }
+        catch { $(id).value="[]"; return []; }
+      };
+      const days=parseArray("scheduleDaysData").map(Number).filter(d=>Number.isInteger(d)&&d>=1&&d<=31);
+      const dates=parseArray("scheduleDatesData").filter(v=>/^\d{2}-\d{2}$/.test(String(v)));
+      const hasSchedule=unit === "yearly" ? dates.length : days.length;
+      const name=$("personName").value.trim();
+      const startDate=$("personStartDate").value;
+      if(!name || !startDate || !hasSchedule) return toast("名前・借入日・利息更新日を入力してください。");
+      const old=state.loans.find(x=>x.id===id);
+      const entry=normalizeLoan({id,name,principal:Number($("personPrincipal").value),rate:Number($("personRate").value),rateUnit:unit,startDate,updateDays:unit === "monthly" ? days : [],updateDates:unit === "yearly" ? dates : [],note:$("personNote").value.trim(),payments:old?.payments||[]});
+      const i=state.loans.findIndex(x=>x.id===id);
+      if(i>=0) state.loans[i]=entry; else state.loans.unshift(entry);
       $("personDialog").close();
       renderAll();
       await persist();
       toast("保存しました");
-    } catch (err) {
-      console.error("人の保存後処理でエラー:", err);
-      toast(`保存後の表示処理でエラー: ${err.message}`);
+    } catch(err) {
+      console.error("人の保存でエラー:",err);
+      toast(`保存できませんでした: ${err?.message || err}`);
     }
   }
 
