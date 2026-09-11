@@ -10,8 +10,11 @@
 
   const STORAGE = {
     vaultCode: "loan-ledger-vault-code-v3",
-    localBlob: "loan-ledger-local-blob-v3"
+    localBlob: "loan-ledger-local-blob-v3",
+    userName: "loan-ledger-user-name-v1"
   };
+
+  let userName = localStorage.getItem(STORAGE.userName) || "";
 
   let state = { loans: [], groups: [] };
   let unlocked = false;
@@ -554,8 +557,40 @@
     const {data,error}=await supabaseClient.rpc("get_encrypted_vault",{p_vault_code:code});if(error)throw new Error(`Supabase取得エラー: ${error.message}`);return data;
   }
   function showVaultMessage(msg){$("vaultMessage").textContent=msg;}
+  function showNewVaultPanel(){
+    $("newVaultPanel").classList.remove("hidden");
+    $("rejoinPanel").classList.add("hidden");
+    $("vaultTitle").textContent="新規登録";
+    $("vaultDescription").textContent="名前と暗証コードを設定して、新しい保管庫を作成します。";
+    showVaultMessage("");
+  }
+  function showRejoinPanel(){
+    $("newVaultPanel").classList.add("hidden");
+    $("rejoinPanel").classList.remove("hidden");
+    $("vaultTitle").textContent="再参加";
+    $("vaultDescription").textContent="再参加用コード・名前・暗証コードを入力して、既存の保管庫に接続します。";
+    showVaultMessage("");
+    if(userName && $("rejoinName")) $("rejoinName").value=userName;
+  }
+  function showRejoinFromUnlock(){
+    $("vaultUnlock").classList.add("hidden");
+    $("vaultSetup").classList.remove("hidden");
+    showRejoinPanel();
+  }
   function prepareVaultDialog(){
-    showVaultMessage("");$("vaultSetup").classList.toggle("hidden",!!vaultCode);$("vaultUnlock").classList.toggle("hidden",!vaultCode);$("pairingPanel").classList.add("hidden");$("vaultTitle").textContent=vaultCode?"保管庫を開く":"暗号保管庫";$("vaultDescription").textContent=vaultCode?"暗証コードで暗号化データを開きます。":"初回は暗証コードを設定してください。";
+    showVaultMessage("");
+    $("pairingPanel").classList.add("hidden");
+    if(vaultCode){
+      $("vaultSetup").classList.add("hidden");
+      $("vaultUnlock").classList.remove("hidden");
+      $("vaultTitle").textContent="保管庫を開く";
+      $("vaultDescription").textContent="名前と暗証コードでこの端末の保管庫を開きます。";
+      if($("unlockName")) $("unlockName").value=userName;
+    }else{
+      $("vaultSetup").classList.remove("hidden");
+      $("vaultUnlock").classList.add("hidden");
+      showNewVaultPanel();
+    }
   }
   function setUnlockedUI(){
     $("lockButton").classList.toggle("hidden",!unlocked);$("vaultButton").classList.toggle("hidden",unlocked);setStatus(unlocked?"クラウド同期済み":"ローカル",unlocked);
@@ -563,24 +598,64 @@
   function lockVault(){unlocked=false;currentPin=null;vaultBlob=null;state={loans:[],groups:[]};renderAll();setUnlockedUI();if(vaultCode)toast("ロックしました");}
 
   async function createVault(){
+    const name=$("setupName").value.trim();
     const pin=$("setupPin").value, confirmPin=$("setupPinConfirm").value;
-    if(pin.length<8)return showVaultMessage("暗証コードは8文字以上にしてください。");if(pin!==confirmPin)return showVaultMessage("暗証コードが一致しません。");if(!supabaseClient)return showVaultMessage("Supabase設定がありません。config.jsを確認してください。");
-    try{const code=CryptoVault.randomVaultCode();const encrypted=await CryptoVault.encryptObject(state,pin);const {error}=await supabaseClient.rpc("save_encrypted_vault",{p_vault_code:code,p_payload:encrypted});if(error)throw new Error(error.message);vaultCode=code;vaultBlob=encrypted;currentPin=pin;unlocked=true;localStorage.setItem(STORAGE.vaultCode,code);saveLocalBlob(encrypted);setUnlockedUI();renderAll();$("vaultDialog").close();toast("暗号保管庫を作成しました");}catch(err){showVaultMessage(`作成できませんでした: ${err.message}`);}
+    if(!name)return showVaultMessage("自分の名前を入力してください。");
+    if(pin.length<8)return showVaultMessage("暗証コードは8文字以上にしてください。");
+    if(pin!==confirmPin)return showVaultMessage("暗証コードが一致しません。");
+    if(!supabaseClient)return showVaultMessage("Supabase設定がありません。config.jsを確認してください。");
+    try{
+      const code=CryptoVault.randomVaultCode();
+      const encrypted=await CryptoVault.encryptObject(state,pin);
+      const {error}=await supabaseClient.rpc("save_encrypted_vault",{p_vault_code:code,p_payload:encrypted});
+      if(error)throw new Error(error.message);
+      userName=name;
+      localStorage.setItem(STORAGE.userName,userName);
+      vaultCode=code;vaultBlob=encrypted;currentPin=pin;unlocked=true;
+      localStorage.setItem(STORAGE.vaultCode,code);saveLocalBlob(encrypted);
+      $("setupName").value="";$("setupPin").value="";$("setupPinConfirm").value="";
+      setUnlockedUI();renderAll();$("vaultDialog").close();toast(`${name}さんの保管庫を作成しました`);
+    }catch(err){showVaultMessage(`作成できませんでした: ${err.message}`);}
   }
   async function unlockVault(){
-    const pin=$("unlockPin").value;if(!pin)return showVaultMessage("暗証コードを入力してください.");if(!vaultCode)return;
-    try{const row=await fetchCloud(vaultCode);if(!row?.payload)throw new Error("保管庫が見つかりません。");const data=normalizeState(await CryptoVault.decryptObject(row.payload,pin));state=data;vaultBlob=row.payload;currentPin=pin;unlocked=true;saveLocalBlob(row.payload);$("unlockPin").value="";setUnlockedUI();renderAll();$("vaultDialog").close();toast("ロックを解除しました");}catch(err){showVaultMessage(err.message);}
+    const name=$("unlockName").value.trim(), pin=$("unlockPin").value;
+    if(!name)return showVaultMessage("自分の名前を入力してください。");
+    if(!pin)return showVaultMessage("暗証コードを入力してください。");
+    if(!vaultCode)return showVaultMessage("再参加用コードを使う場合は「再参加」から入力してください。");
+    try{
+      const row=await fetchCloud(vaultCode);
+      if(!row?.payload)throw new Error("保管庫が見つかりません。");
+      const data=normalizeState(await CryptoVault.decryptObject(row.payload,pin));
+      userName=name;localStorage.setItem(STORAGE.userName,userName);
+      state=data;vaultBlob=row.payload;currentPin=pin;unlocked=true;saveLocalBlob(row.payload);
+      $("unlockPin").value="";setUnlockedUI();renderAll();$("vaultDialog").close();toast(`${name}さんとしてロックを解除しました`);
+    }catch(err){showVaultMessage(err.message);}
   }
-  async function connectVault(){
-    const code=$("connectCode").value.trim();if(code.length<32)return $("connectMessage").textContent="共有コードが短すぎます。";
-    try{const row=await fetchCloud(code);if(!row?.payload)throw new Error("保管庫が見つかりません。");vaultCode=code;vaultBlob=row.payload;localStorage.setItem(STORAGE.vaultCode,code);$("connectDialog").close();prepareVaultDialog();$("vaultDialog").showModal();toast("保管庫を見つけました。暗証コードを入力してください。");}catch(err){$("connectMessage").textContent=err.message;}
+  async function rejoinVault(){
+    const name=$("rejoinName").value.trim();
+    const code=$("rejoinCode").value.trim();
+    const pin=$("rejoinPin").value;
+    if(!name)return showVaultMessage("自分の名前を入力してください。");
+    if(code.length<32)return showVaultMessage("再参加用コードが短すぎます。");
+    if(!pin)return showVaultMessage("暗証コードを入力してください。");
+    try{
+      const row=await fetchCloud(code);
+      if(!row?.payload)throw new Error("その再参加用コードの保管庫が見つかりません。");
+      const data=normalizeState(await CryptoVault.decryptObject(row.payload,pin));
+      userName=name;localStorage.setItem(STORAGE.userName,userName);
+      vaultCode=code;vaultBlob=row.payload;currentPin=pin;unlocked=true;state=data;
+      localStorage.setItem(STORAGE.vaultCode,code);saveLocalBlob(row.payload);
+      $("rejoinCode").value="";$("rejoinPin").value="";
+      setUnlockedUI();renderAll();$("vaultDialog").close();toast(`${name}さんとして保管庫に再参加しました`);
+    }catch(err){showVaultMessage(err.message);}
   }
   async function changePairingCode(){
     if(!unlocked||!currentPin||!supabaseClient)return;
     try{const newCode=CryptoVault.randomVaultCode();const encrypted=await CryptoVault.encryptObject(state,currentPin);const {error}=await supabaseClient.rpc("save_encrypted_vault",{p_vault_code:newCode,p_payload:encrypted});if(error)throw new Error(error.message);vaultCode=newCode;vaultBlob=encrypted;localStorage.setItem(STORAGE.vaultCode,newCode);$("pairingCode").textContent=newCode;toast("新しい共有コードを作成しました");}catch(err){showVaultMessage(err.message);}
   }
   function showPairing(){
-    $("pairingPanel").classList.remove("hidden");$("pairingCode").textContent=vaultCode||"—";$("pairingImport").classList.remove("hidden");
+    $("pairingPanel").classList.remove("hidden");
+    $("pairingCode").textContent=vaultCode||"—";
   }
 
   function esc(v){return String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));}
@@ -598,8 +673,10 @@
     $("createVaultButton").onclick=createVault;
     $("unlockButton").onclick=unlockVault;
     $("showPairingButton").onclick=showPairing;
-    $("connectVaultButton").onclick=connectVault;
-    $("connectStartButton").onclick=()=>$("connectDialog").showModal();
+    $("showNewVaultButton").onclick=showNewVaultPanel;
+    $("showRejoinButton").onclick=showRejoinPanel;
+    $("showRejoinFromUnlockButton").onclick=showRejoinFromUnlock;
+    $("rejoinVaultButton").onclick=rejoinVault;
     $("copyPairingButton").onclick=async()=>{if(!vaultCode)return;await navigator.clipboard.writeText(vaultCode);toast("共有コードをコピーしました");};
     $("newPairingButton").onclick=changePairingCode;
     $("personForm").addEventListener("submit",savePerson);
