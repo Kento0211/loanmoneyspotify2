@@ -59,8 +59,19 @@
       rate: Number(l.rate) || 0,
       rateUnit: l.rateUnit === "yearly" ? "yearly" : "monthly",
       startDate: l.startDate || today(),
-      updateDays: Array.from(new Set((Array.isArray(l.updateDays) ? l.updateDays : (l.updateDate ? [Number(String(l.updateDate).split("-")[2])] : [])).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b),
-      updateDates: Array.from(new Set((Array.isArray(l.updateDates) ? l.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v)))).sort(),
+      updateDays: (() => {
+        const src = Array.isArray(l.updateDays) ? l.updateDays : (l.updateDate ? [Number(String(l.updateDate).split("-")[2])] : []);
+        const out = [];
+        src.forEach(v => { const n = Number(v); if (Number.isInteger(n) && n >= 1 && n <= 31 && !out.includes(n)) out.push(n); });
+        out.sort((a,b)=>a-b);
+        return out;
+      })(),
+      updateDates: (() => {
+        const src = Array.isArray(l.updateDates) ? l.updateDates : [];
+        const out = [];
+        src.forEach(v => { const x = String(v); if (/^\d{2}-\d{2}$/.test(x) && !out.includes(x)) out.push(x); });
+        return out;
+      })(),
       note: String(l.note || ""),
       payments: Array.isArray(l.payments) ? l.payments.map(p => ({ id:p.id || uid(), date:p.date || today(), amount:Number(p.amount)||0, note:String(p.note||"") })) : []
     };
@@ -72,8 +83,19 @@
       name: String(g.name || "グループ"),
       memberIds: Array.from(new Set(Array.isArray(g.memberIds) ? g.memberIds : [])),
       sharedAmount: g.sharedAmount === "" || g.sharedAmount == null ? null : Number(g.sharedAmount),
-      updateDays: Array.from(new Set((Array.isArray(g.updateDays) ? g.updateDays : []).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b),
-      updateDates: Array.from(new Set((Array.isArray(g.updateDates) ? g.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v)))).sort(),
+      updateDays: (() => {
+        const src = Array.isArray(g.updateDays) ? g.updateDays : [];
+        const out = [];
+        src.forEach(v => { const n = Number(v); if (Number.isInteger(n) && n >= 1 && n <= 31 && !out.includes(n)) out.push(n); });
+        out.sort((a,b)=>a-b);
+        return out;
+      })(),
+      updateDates: (() => {
+        const src = Array.isArray(g.updateDates) ? g.updateDates : [];
+        const out = [];
+        src.forEach(v => { const x = String(v); if (/^\d{2}-\d{2}$/.test(x) && !out.includes(x)) out.push(x); });
+        return out;
+      })(),
       rateUnit: g.rateUnit === "yearly" ? "yearly" : "monthly"
     };
   }
