@@ -59,7 +59,8 @@
       rate: Number(l.rate) || 0,
       rateUnit: l.rateUnit === "yearly" ? "yearly" : "monthly",
       startDate: l.startDate || today(),
-      updateDays: Array.from(new Set((Array.isArray(l.updateDays) && l.updateDays.length ? l.updateDays : (l.updateDate ? [Number(String(l.updateDate).split("-")[2])] : [])).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b),
+      updateDays: Array.from(new Set((Array.isArray(l.updateDays) ? l.updateDays : (l.updateDate ? [Number(String(l.updateDate).split("-")[2])] : [])).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b),
+      updateDates: Array.from(new Set((Array.isArray(l.updateDates) ? l.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v))).sort()),
       note: String(l.note || ""),
       payments: Array.isArray(l.payments) ? l.payments.map(p => ({ id:p.id || uid(), date:p.date || today(), amount:Number(p.amount)||0, note:String(p.note||"") })) : []
     };
@@ -71,7 +72,9 @@
       name: String(g.name || "グループ"),
       memberIds: Array.from(new Set(Array.isArray(g.memberIds) ? g.memberIds : [])),
       sharedAmount: g.sharedAmount === "" || g.sharedAmount == null ? null : Number(g.sharedAmount),
-      updateDays: Array.from(new Set((Array.isArray(g.updateDays) ? g.updateDays : []).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b)
+      updateDays: Array.from(new Set((Array.isArray(g.updateDays) ? g.updateDays : []).map(Number).filter(d => d >= 1 && d <= 31))).sort((a,b)=>a-b),
+      updateDates: Array.from(new Set((Array.isArray(g.updateDates) ? g.updateDates : []).map(String).filter(v => /^\d{2}-\d{2}$/.test(v))).sort()),
+      rateUnit: g.rateUnit === "yearly" ? "yearly" : "monthly"
     };
   }
 
@@ -102,6 +105,12 @@
     return [...days].sort((a,b)=>a-b);
   }
 
+  function effectiveUpdateDates(loan) {
+    const dates = new Set(loan.updateDates || []);
+    state.groups.filter(g => g.memberIds.includes(loan.id)).forEach(g => (g.updateDates || []).forEach(v => dates.add(v)));
+    return [...dates].sort();
+  }
+
   function monthDays(year, monthIndex) { return new Date(year, monthIndex + 1, 0).getDate(); }
 
   function monthlyOccurrences(loan, targetDate) {
@@ -109,7 +118,7 @@
     const target = new Date(`${targetDate}T00:00:00`);
     if (target < start) return [];
     const result = [];
-    const days = effectiveUpdateDays(loan);
+    const days = loan.rateUnit === "yearly" ? effectiveUpdateDates(loan) : effectiveUpdateDays(loan);
     if (!days.length) return result;
     let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
     const end = new Date(target.getFullYear(), target.getMonth(), 1);
@@ -130,11 +139,13 @@
     const target = new Date(`${targetDate}T00:00:00`);
     if (target < start) return [];
     const result = [];
+    let schedules = effectiveUpdateDates(loan);
+    if (!schedules.length) schedules = effectiveUpdateDays(loan).map(day => `${String(start.getMonth()+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`);
     for (let year = start.getFullYear(); year <= target.getFullYear(); year++) {
-      const days = effectiveUpdateDays(loan);
-      days.forEach(day => {
-        const d = new Date(year, start.getMonth(), day);
-        if (d.getMonth() === start.getMonth() && d >= start && d <= target) result.push(dateISO(d));
+      schedules.forEach(value => {
+        const [month, day] = value.split("-").map(Number);
+        const d = new Date(year, month - 1, day);
+        if (d.getMonth() === month - 1 && d.getDate() === day && d >= start && d <= target) result.push(dateISO(d));
       });
     }
     return result.sort();
@@ -174,7 +185,10 @@
     const daysInMonth = monthDays(y,m);
     const items = [];
     state.loans.forEach(loan => {
-      effectiveUpdateDays(loan).forEach(day => {
+      const dates = loan.rateUnit === "yearly"
+        ? effectiveUpdateDates(loan).filter(v => Number(v.split("-")[0]) === m + 1).map(v => Number(v.split("-")[1]))
+        : effectiveUpdateDays(loan);
+      dates.forEach(day => {
         if (day > daysInMonth) return;
         const date = `${y}-${String(m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
         if (date < loan.startDate) return;
@@ -221,7 +235,7 @@
           <div class="person-head"><div><div class="person-name">${esc(loan.name)}</div><div class="person-sub">${group ? `GROUP · ${esc(group.name)}` : "個別管理"}</div></div><span class="status-pill">${loan.rateUnit === "monthly" ? "月利" : "年利"} ${num(loan.rate)}%</span></div>
           <div class="person-balance">${yen(balance)}</div>
           <div class="person-meta"><span>借入額 ${yen(effectivePrincipal(loan))}</span><span>利子 ${yen(interest)}</span><span>借入日 ${fmtDate(loan.startDate)}</span></div>
-          <div class="schedule-row">更新日 ${days.length ? days.map(d=>`<b>${d}日</b>`).join(" ") : "未設定"}</div>
+          <div class="schedule-row">更新日 ${days.length ? days.map(d=>`<b>${loan.rateUnit === "yearly" ? `${Number(d.split("-")[0])}月${Number(d.split("-")[1])}日` : `${d}日`}</b>`).join(" ") : "未設定"}</div>
         </button>
         <div class="person-actions"><button class="small-button" data-edit="${loan.id}">編集</button><button class="small-button" data-payment="${loan.id}">返済を記録</button><button class="small-button danger-button" data-delete="${loan.id}">削除</button></div>
       </article>`;
@@ -284,7 +298,8 @@
     }
     list.innerHTML = state.groups.map(g => {
       const members = g.memberIds.map(id=>state.loans.find(l=>l.id===id)).filter(Boolean);
-      return `<div class="group-card glass"><div class="group-top"><div><strong>${esc(g.name)}</strong><span>${members.length}人 · 更新 ${g.updateDays.length ? g.updateDays.map(d=>d+"日").join("・") : "未設定"}</span></div><div>${g.sharedAmount != null ? `<b>${yen(g.sharedAmount)}/人</b>` : `<b>個別金額</b>`}</div></div><div class="group-members">${members.map(m=>`<span>${esc(m.name)}</span>`).join("")}</div><div class="person-actions"><button class="small-button" data-group-edit="${g.id}">編集</button><button class="small-button danger-button" data-group-delete="${g.id}">削除</button></div></div>`;
+      const schedule = g.rateUnit === "yearly" ? (g.updateDates||[]).map(v=>{const [m,d]=v.split("-");return `${Number(m)}月${Number(d)}日`;}).join("・") : (g.updateDays||[]).map(d=>d+"日").join("・");
+      return `<div class="group-card glass"><div class="group-top"><div><strong>${esc(g.name)}</strong><span>${members.length}人 · ${g.rateUnit === "yearly" ? "年" : "月"}更新 ${schedule || "未設定"}</span></div><div>${g.sharedAmount != null ? `<b>${yen(g.sharedAmount)}/人</b>` : `<b>個別金額</b>`}</div></div><div class="group-members">${members.map(m=>`<span>${esc(m.name)}</span>`).join("")}</div><div class="person-actions"><button class="small-button" data-group-edit="${g.id}">編集</button><button class="small-button danger-button" data-group-delete="${g.id}">削除</button></div></div>`;
     }).join("");
     list.querySelectorAll("[data-group-edit]").forEach(b=>b.onclick=()=>openGroupEdit(b.dataset.groupEdit));
     list.querySelectorAll("[data-group-delete]").forEach(b=>b.onclick=()=>deleteGroup(b.dataset.groupDelete));
@@ -335,53 +350,122 @@
     box.innerHTML=state.loans.length ? state.loans.map(l=>`<label class="check-person"><input type="checkbox" value="${l.id}"><span>${esc(l.name)}</span><small>${yen(l.principal)}</small></label>`).join("") : `<div class="muted">先に「人を追加」してください。</div>`;
   }
 
-  function setScheduleInputs(days=[]) {
-    $("scheduleDays").innerHTML=days.map(day=>`<span class="day-chip">${day}日 <button type="button" data-remove-day="${day}">×</button></span>`).join("");
-    $("scheduleDays").querySelectorAll("[data-remove-day]").forEach(b=>b.onclick=()=>{ removeScheduleDay(Number(b.dataset.removeDay)); });
+  function renderScheduleChips(kind) {
+    const isGroup = kind === "group";
+    const daysEl = $(isGroup ? "groupScheduleDays" : "scheduleDays");
+    const daysData = $(isGroup ? "groupScheduleDaysData" : "scheduleDaysData");
+    const datesData = $(isGroup ? "groupScheduleDatesData" : "scheduleDatesData");
+    const controls = $(isGroup ? "groupScheduleControls" : "personScheduleControls");
+    const unit = controls.dataset.unit || "monthly";
+    const days = JSON.parse(daysData.value || "[]");
+    const dates = JSON.parse(datesData.value || "[]");
+    if (unit === "yearly") {
+      daysEl.innerHTML = dates.map(v => { const [m,d]=v.split("-"); return `<span class="day-chip">${Number(m)}月${Number(d)}日 <button type="button" data-remove-date="${v}">×</button></span>`; }).join("");
+      daysEl.querySelectorAll("[data-remove-date]").forEach(b=>b.onclick=()=>removeScheduleValue(kind,"date",b.dataset.removeDate));
+    } else {
+      daysEl.innerHTML = days.map(day=>`<span class="day-chip">${day}日 <button type="button" data-remove-day="${day}">×</button></span>`).join("");
+      daysEl.querySelectorAll("[data-remove-day]").forEach(b=>b.onclick=()=>removeScheduleValue(kind,"day",Number(b.dataset.removeDay)));
+    }
   }
-  function addScheduleDayFromInput(targetId){
-    const input=$(targetId), val=Number(input.value); if(!val||val<1||val>31) return;
-    const current=Array.from(document.querySelectorAll(`#${targetId.replace("DateInput","Days")} .day-chip`)).map(x=>Number(x.textContent));
-    // use the current form's hidden data instead of parsing chip text
-    const holder=targetId.includes("Group")?$("groupScheduleDaysData"):$("scheduleDaysData");
-    let days=JSON.parse(holder.value||"[]"); if(!days.includes(val)) days.push(val); days.sort((a,b)=>a-b); holder.value=JSON.stringify(days); setScheduleInputs(days); input.value="";
+
+  function setScheduleUnit(kind, unit) {
+    const isGroup = kind === "group";
+    const controls = $(isGroup ? "groupScheduleControls" : "personScheduleControls");
+    controls.dataset.unit = unit;
+    const monthInput = $(isGroup ? "groupScheduleMonthInput" : "scheduleMonthInput");
+    monthInput.classList.toggle("hidden", unit !== "yearly");
+    renderScheduleChips(kind);
   }
-  function removeScheduleDay(day){
-    const holder=$("scheduleDaysData"); let days=JSON.parse(holder.value||"[]").filter(x=>x!==day); holder.value=JSON.stringify(days); setScheduleInputs(days);
+
+  function setScheduleInputs(days=[], dates=[], unit="monthly") {
+    $("scheduleDaysData").value=JSON.stringify(days);
+    $("scheduleDatesData").value=JSON.stringify(dates);
+    setScheduleUnit("person", unit);
   }
-  function setGroupScheduleDays(days=[]){
-    $("groupScheduleDays").innerHTML=days.map(day=>`<span class="day-chip">${day}日 <button type="button" data-remove-group-day="${day}">×</button></span>`).join("");
-    $("groupScheduleDays").querySelectorAll("[data-remove-group-day]").forEach(b=>b.onclick=()=>{let d=JSON.parse($("groupScheduleDaysData").value||"[]").filter(x=>x!==Number(b.dataset.removeGroupDay));$("groupScheduleDaysData").value=JSON.stringify(d);setGroupScheduleDays(d);});
+
+  function setGroupScheduleDays(days=[], dates=[], unit="monthly") {
+    $("groupScheduleDaysData").value=JSON.stringify(days);
+    $("groupScheduleDatesData").value=JSON.stringify(dates);
+    setScheduleUnit("group", unit);
+  }
+
+  function addScheduleValue(kind) {
+    const isGroup = kind === "group";
+    const controls = $(isGroup ? "groupScheduleControls" : "personScheduleControls");
+    const unit = controls.dataset.unit || "monthly";
+    const dayInput = $(isGroup ? "groupScheduleDayInput" : "scheduleDayInput");
+    const monthInput = $(isGroup ? "groupScheduleMonthInput" : "scheduleMonthInput");
+    const day = Number(dayInput.value);
+    if (!Number.isInteger(day) || day < 1 || day > 31) return toast("日付は1〜31で入力してください。");
+    const holder = $(isGroup ? "groupScheduleDaysData" : "scheduleDaysData");
+    const datesHolder = $(isGroup ? "groupScheduleDatesData" : "scheduleDatesData");
+    let days = JSON.parse(holder.value || "[]");
+    let dates = JSON.parse(datesHolder.value || "[]");
+    if (unit === "yearly") {
+      const month = Number(monthInput.value);
+      const value = `${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const test = new Date(2024, month-1, day);
+      if (test.getMonth() !== month-1 || test.getDate() !== day) return toast("その月にはその日付がありません。");
+      if (!dates.includes(value)) dates.push(value);
+      dates.sort();
+    } else {
+      if (!days.includes(day)) days.push(day);
+      days.sort((a,b)=>a-b);
+    }
+    holder.value=JSON.stringify(days); datesHolder.value=JSON.stringify(dates);
+    renderScheduleChips(kind);
+    dayInput.value="";
+  }
+
+  function removeScheduleValue(kind, type, value) {
+    const isGroup = kind === "group";
+    const holder = $(isGroup ? "groupScheduleDaysData" : "scheduleDaysData");
+    const datesHolder = $(isGroup ? "groupScheduleDatesData" : "scheduleDatesData");
+    if (type === "day") holder.value=JSON.stringify(JSON.parse(holder.value||"[]").filter(x=>Number(x)!==Number(value)));
+    else datesHolder.value=JSON.stringify(JSON.parse(datesHolder.value||"[]").filter(x=>x!==value));
+    renderScheduleChips(kind);
   }
 
   function openPersonAdd(){
-    $("personForm").reset(); $("personId").value=""; $("personStartDate").value=today(); $("scheduleDaysData").value="[]"; setScheduleInputs([]); $("personDialogTitle").textContent="人を追加"; $("personDialog").showModal();
+    $("personForm").reset(); $("personId").value=""; $("personStartDate").value=today(); $("scheduleDaysData").value="[]"; $("scheduleDatesData").value="[]"; setScheduleInputs([],[],"monthly"); $("personDialogTitle").textContent="人を追加"; $("personDialog").showModal();
   }
   function openPersonEdit(id){
     const l=state.loans.find(x=>x.id===id); if(!l)return;
-    $("personId").value=l.id; $("personName").value=l.name; $("personPrincipal").value=l.principal; $("personRate").value=l.rate; $("personRateUnit").value=l.rateUnit; $("personStartDate").value=l.startDate; $("personNote").value=l.note; $("scheduleDaysData").value=JSON.stringify(l.updateDays||[]); setScheduleInputs(l.updateDays||[]); $("personDialogTitle").textContent="人を編集"; $("personDialog").showModal();
+    $("personId").value=l.id; $("personName").value=l.name; $("personPrincipal").value=l.principal; $("personRate").value=l.rate; $("personRateUnit").value=l.rateUnit; $("personStartDate").value=l.startDate; $("personNote").value=l.note;
+    setScheduleInputs(l.updateDays||[],l.updateDates||[],l.rateUnit);
+    // Backward-compatible yearly data: old updateDays belong to the start month.
+    if(l.rateUnit === "yearly" && !(l.updateDates||[]).length) {
+      const month=String(new Date(`${l.startDate}T00:00:00`).getMonth()+1).padStart(2,"0");
+      setScheduleInputs([],(l.updateDays||[]).map(d=>`${month}-${String(d).padStart(2,"0")}`),"yearly");
+    }
+    $("personDialogTitle").textContent="人を編集"; $("personDialog").showModal();
   }
   async function savePerson(e){
     e.preventDefault(); if(vaultCode&&!unlocked)return toast("先に保管庫を開いてください。");
-    const id=$("personId").value||uid(), days=JSON.parse($("scheduleDaysData").value||"[]");
-    const entry=normalizeLoan({id,name:$("personName").value.trim(),principal:Number($("personPrincipal").value),rate:Number($("personRate").value),rateUnit:$("personRateUnit").value,startDate:$("personStartDate").value,updateDays:days,note:$("personNote").value.trim(),payments:state.loans.find(x=>x.id===id)?.payments||[]});
-    if(!entry.name||!entry.startDate||!days.length)return toast("名前・借入日・利息更新日を入力してください。");
+    const id=$("personId").value||uid(), unit=$("personRateUnit").value;
+    const days=JSON.parse($("scheduleDaysData").value||"[]"), dates=JSON.parse($("scheduleDatesData").value||"[]");
+    const hasSchedule=unit === "yearly" ? dates.length : days.length;
+    const entry=normalizeLoan({id,name:$("personName").value.trim(),principal:Number($("personPrincipal").value),rate:Number($("personRate").value),rateUnit:unit,startDate:$("personStartDate").value,updateDays:unit === "monthly" ? days : [],updateDates:unit === "yearly" ? dates : [],note:$("personNote").value.trim(),payments:state.loans.find(x=>x.id===id)?.payments||[]});
+    if(!entry.name||!entry.startDate||!hasSchedule)return toast("名前・借入日・利息更新日を入力してください。");
     const i=state.loans.findIndex(x=>x.id===id); if(i>=0)state.loans[i]=entry;else state.loans.unshift(entry);
     $("personDialog").close(); renderAll(); await persist(); toast("保存しました");
   }
 
   function openGroupAdd(){
-    $("groupForm").reset(); $("groupId").value=""; $("groupSharedAmount").value=""; $("groupScheduleDaysData").value="[]"; setGroupScheduleDays([]); renderPeopleSelects(); $("groupDialogTitle").textContent="グループを作成"; $("groupDialog").showModal();
+    $("groupForm").reset(); $("groupId").value=""; $("groupSharedAmount").value=""; $("groupScheduleDaysData").value="[]"; $("groupScheduleDatesData").value="[]"; setGroupScheduleDays([],[],"monthly"); renderPeopleSelects(); $("groupDialogTitle").textContent="グループを作成"; $("groupDialog").showModal();
   }
   function openGroupEdit(id){
     const g=state.groups.find(x=>x.id===id); if(!g)return;
-    $("groupId").value=g.id; $("groupName").value=g.name; $("groupSharedAmount").value=g.sharedAmount??""; $("groupScheduleDaysData").value=JSON.stringify(g.updateDays||[]); setGroupScheduleDays(g.updateDays||[]); renderPeopleSelects(); g.memberIds.forEach(id=>{const c=$("groupPeople").querySelector(`input[value="${id}"]`);if(c)c.checked=true;}); $("groupDialogTitle").textContent="グループを編集"; $("groupDialog").showModal();
+    $("groupId").value=g.id; $("groupName").value=g.name; $("groupSharedAmount").value=g.sharedAmount??""; setGroupScheduleDays(g.updateDays||[],g.updateDates||[],g.rateUnit||"monthly"); renderPeopleSelects(); g.memberIds.forEach(id=>{const c=$("groupPeople").querySelector(`input[value="${id}"]`);if(c)c.checked=true;}); $("groupDialogTitle").textContent="グループを編集"; $("groupDialog").showModal();
   }
   async function saveGroup(e){
     e.preventDefault(); if(vaultCode&&!unlocked)return toast("先に保管庫を開いてください。");
-    const id=$("groupId").value||uid(); const memberIds=[...$("groupPeople").querySelectorAll("input:checked")].map(x=>x.value); const days=JSON.parse($("groupScheduleDaysData").value||"[]");
-    if(!$("groupName").value.trim()||!memberIds.length||!days.length)return toast("グループ名・メンバー・更新日を入力してください。");
-    const group=normalizeGroup({id,name:$("groupName").value.trim(),memberIds,sharedAmount:$("groupSharedAmount").value===""?null:Number($("groupSharedAmount").value),updateDays:days});
+    const id=$("groupId").value||uid(); const unit=$("groupRateUnit").value; const memberIds=[...$("groupPeople").querySelectorAll("input:checked")].map(x=>x.value); const days=JSON.parse($("groupScheduleDaysData").value||"[]"), dates=JSON.parse($("groupScheduleDatesData").value||"[]");
+    const hasSchedule=unit === "yearly" ? dates.length : days.length;
+    if(!$("groupName").value.trim()||!memberIds.length||!hasSchedule)return toast("グループ名・メンバー・更新日を入力してください。");
+    const group=normalizeGroup({id,name:$("groupName").value.trim(),memberIds,sharedAmount:$("groupSharedAmount").value===""?null:Number($("groupSharedAmount").value),updateDays:unit === "monthly" ? days : [],updateDates:unit === "yearly" ? dates : [],rateUnit:unit});
+    // A group has one common cycle, so selected people follow the group's monthly/yearly setting.
+    state.loans.forEach(l=>{if(memberIds.includes(l.id)) l.rateUnit=unit;});
     // Keep one active group per person to avoid duplicate group schedules.
     state.groups=state.groups.filter(g=>g.id===id || !g.memberIds.some(pid=>memberIds.includes(pid)));
     const i=state.groups.findIndex(g=>g.id===id); if(i>=0)state.groups[i]=group;else state.groups.push(group);
@@ -406,9 +490,9 @@
 
   function openPersonDetail(id){
     const loan=state.loans.find(l=>l.id===id);if(!loan)return;selectedPersonId=id;
-    const group=activeGroupFor(id);const interest=interestFor(loan);const balance=currentBalance(loan);const days=effectiveUpdateDays(loan);
+    const group=activeGroupFor(id);const interest=interestFor(loan);const balance=currentBalance(loan);const schedule=loan.rateUnit === "yearly" ? effectiveUpdateDates(loan).map(v=>{const [m,d]=v.split("-");return `${Number(m)}月${Number(d)}日`;}) : effectiveUpdateDays(loan).map(d=>d+"日");
     $("detailTitle").textContent=loan.name;
-    $("detailBody").innerHTML=`<div class="detail-grid"><div><span>借入額</span><strong>${yen(effectivePrincipal(loan))}</strong></div><div><span>現在の金額</span><strong>${yen(balance)}</strong></div><div><span>利子</span><strong>${yen(interest)}</strong></div><div><span>利率</span><strong>${num(loan.rate)}% / ${loan.rateUnit==="monthly"?"月":"年"}</strong></div><div><span>利息更新日</span><strong>${days.map(d=>d+"日").join("・")||"—"}</strong></div><div><span>借入日</span><strong>${fmtDate(loan.startDate)}</strong></div></div><div class="detail-note">${group?`グループ：${esc(group.name)}${group.sharedAmount!=null?` · グループ金額 ${yen(group.sharedAmount)}`:""}`:"個別管理"}</div><h3 class="detail-subtitle">支払い履歴</h3><div class="payment-history">${(loan.payments||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).map(p=>`<div><span>${fmtDate(p.date)}</span><strong>${yen(p.amount)}</strong></div>`).join("")||`<span class="muted">まだ支払い記録がありません。</span>`}</div>`;
+    $("detailBody").innerHTML=`<div class="detail-grid"><div><span>借入額</span><strong>${yen(effectivePrincipal(loan))}</strong></div><div><span>現在の金額</span><strong>${yen(balance)}</strong></div><div><span>利子</span><strong>${yen(interest)}</strong></div><div><span>利率</span><strong>${num(loan.rate)}% / ${loan.rateUnit==="monthly"?"月":"年"}</strong></div><div><span>利息更新日</span><strong>${schedule.join("・")||"—"}</strong></div><div><span>借入日</span><strong>${fmtDate(loan.startDate)}</strong></div></div><div class="detail-note">${group?`グループ：${esc(group.name)}${group.sharedAmount!=null?` · グループ金額 ${yen(group.sharedAmount)}`:""}`:"個別管理"}</div><h3 class="detail-subtitle">支払い履歴</h3><div class="payment-history">${(loan.payments||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).map(p=>`<div><span>${fmtDate(p.date)}</span><strong>${yen(p.amount)}</strong></div>`).join("")||`<span class="muted">まだ支払い記録がありません。</span>`}</div>`;
     $("personDetailDialog").showModal();
   }
 
@@ -481,10 +565,10 @@
     $("calcLoan").onchange=calculateResult;$("calcDate").onchange=calculateResult;
     $("prevMonth").onclick=()=>{calendarDate.setMonth(calendarDate.getMonth()-1);renderCalendar();};$("nextMonth").onclick=()=>{calendarDate.setMonth(calendarDate.getMonth()+1);renderCalendar();};$("todayMonth").onclick=()=>{calendarDate=new Date();renderCalendar();};
     $("todoPrev").onclick=()=>{todoDate.setMonth(todoDate.getMonth()-1);renderTodo();};$("todoNext").onclick=()=>{todoDate.setMonth(todoDate.getMonth()+1);renderTodo();};$("todoToday").onclick=()=>{todoDate=new Date();renderTodo();};
-    $("addScheduleDay").onclick=()=>addScheduleDayFromInput("scheduleDateInput");
-    $("addGroupScheduleDay").onclick=()=>{
-      const input=$("groupScheduleDateInput"),v=Number(input.value.split("-")[2]);if(!v)return;let days=JSON.parse($("groupScheduleDaysData").value||"[]");if(!days.includes(v))days.push(v);days.sort((a,b)=>a-b);$("groupScheduleDaysData").value=JSON.stringify(days);setGroupScheduleDays(days);input.value="";
-    };
+    $("personRateUnit").onchange=()=>{ const unit=$("personRateUnit").value; setScheduleUnit("person",unit); };
+    $("groupRateUnit").onchange=()=>{ const unit=$("groupRateUnit").value; setScheduleUnit("group",unit); };
+    $("addScheduleDay").onclick=()=>addScheduleValue("person");
+    $("addGroupScheduleDay").onclick=()=>addScheduleValue("group");
     document.querySelectorAll("[data-close]").forEach(btn=>btn.onclick=()=>$(btn.dataset.close).close());
     $("detailEditButton").onclick=()=>{ $("personDetailDialog").close(); if(selectedPersonId)openPersonEdit(selectedPersonId); };
     $("detailPaymentButton").onclick=()=>{ $("personDetailDialog").close(); if(selectedPersonId)openPayment(selectedPersonId); };
